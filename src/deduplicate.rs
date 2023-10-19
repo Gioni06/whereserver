@@ -2,7 +2,7 @@ pub fn vec_u16(vec: Vec<u16>) -> Vec<u16> {
     let mut deduplicated = vec.clone();
     deduplicated.sort();
     deduplicated.dedup();
-    return deduplicated
+    return deduplicated;
 }
 
 // add test
