@@ -41,14 +41,12 @@ async fn main() {
             let stdout_mutex = Arc::clone(&stdout_mutex);
             task::spawn(async move {
                 let address = format!("127.0.0.1:{}", port);
-                // Use tokio::time::timeout here
                 let result = tokio::time::timeout(timeout, TcpStream::connect(&address)).await;
 
                 if let Ok(Ok(_)) = result {
                     let protocol = if port == 443 { "https" } else { "http" };
                     let url = format!("{}://{}", protocol, address);
 
-                    // Remove .await if these functions are not async
                     if http_utils::is_serving_content(&url).await {
                         let pid = pid_utils::get_pid(port)
                             .await
