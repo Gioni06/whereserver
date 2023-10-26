@@ -1,19 +1,15 @@
-use std::net::TcpStream;
-use std::sync::{Arc, Mutex};
-use std::thread;
+use std::sync::Arc;
 use std::time::Duration;
+use tokio::net::TcpStream;
+use tokio::sync::Mutex;
+use tokio::task;
 
-// Importing deduplication utilities.
 mod deduplicate;
-// Importing utilities to fetch PID of a port.
-mod pid_utils;
-// Importing utilities related to HTTP requests.
 mod http_utils;
+mod pid_utils;
 
-/// # Whereserver
-/// Find running http servers on your machine
-fn main() {
-    // Commonly used ports for various applications and services.
+#[tokio::main]
+async fn main() {
     let common_ports = vec![80, 443, 8000];
     let vite_ports: Vec<u16> = (5000..=5499).collect();
     let webpack_ports: Vec<u16> = (8080..=8999).collect();
@@ -21,7 +17,6 @@ fn main() {
     let svelte_ports: Vec<u16> = (5500..=5999).collect();
     let system_ports: Vec<u16> = (1024..=49151).collect();
 
-    // Concatenating all port ranges and duplicating them.
     let all_ports = [
         system_ports,
         common_ports,
@@ -38,23 +33,29 @@ fn main() {
     println!("| Port | PID   | URL                                    |");
     println!("|------|-------|----------------------------------------|");
 
-    let stdout_mutex = Arc::new(Mutex::new(())); // Mutex to lock stdout
+    let stdout_mutex = Arc::new(Mutex::new(()));
 
     let handles: Vec<_> = all_ports
         .into_iter()
         .map(|port| {
             let stdout_mutex = Arc::clone(&stdout_mutex);
-            thread::spawn(move || {
+            task::spawn(async move {
                 let address = format!("127.0.0.1:{}", port);
-                if let Ok(_) = TcpStream::connect_timeout(&address.parse().unwrap(), timeout) {
+                // Use tokio::time::timeout here
+                let result = tokio::time::timeout(timeout, TcpStream::connect(&address)).await;
+
+                if let Ok(Ok(_)) = result {
                     let protocol = if port == 443 { "https" } else { "http" };
                     let url = format!("{}://{}", protocol, address);
 
-                    if http_utils::is_serving_content(&url) {
-                        let pid = pid_utils::get_pid(port).unwrap_or_else(|| "N/A".to_string());
+                    // Remove .await if these functions are not async
+                    if http_utils::is_serving_content(&url).await {
+                        let pid = pid_utils::get_pid(port)
+                            .await
+                            .unwrap_or_else(|| "N/A".to_string());
                         let clickable = format!("\x1B]8;;{}\x07{:38}\x1B]8;;\x07", url, url);
 
-                        let _lock = stdout_mutex.lock().unwrap();
+                        let _lock = stdout_mutex.lock().await;
                         println!("| {:4} | {:5} | {} |", port, pid, clickable.trim_end());
                     }
                 }
@@ -63,9 +64,9 @@ fn main() {
         .collect();
 
     for handle in handles {
-        match handle.join() {
+        match handle.await {
             Ok(_) => (),
-            Err(err) => eprintln!("A thread panicked: {:?}", err),
+            Err(err) => eprintln!("A task panicked: {:?}", err),
         }
     }
 }

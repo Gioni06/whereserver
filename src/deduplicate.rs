@@ -5,7 +5,6 @@ pub fn vec_u16(vec: Vec<u16>) -> Vec<u16> {
     return deduplicated;
 }
 
-// add test
 #[cfg(test)]
 mod tests {
     use super::*;
